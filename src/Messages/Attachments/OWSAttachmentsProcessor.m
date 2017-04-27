@@ -390,4 +390,21 @@ static const CGFloat kAttachmentDownloadProgressTheta = 0.001f;
 
 @end
 
+@implementation OWSAttachmentsProcessor (SupportedAttachment)
+
+- (void)fetchAllAttachmentsForMessage:(nullable TSMessage *)message
+                              success:(void (^)(TSAttachmentStream *attachmentStream))successHandler
+                              failure:(void (^)(NSError *error))failureHandler
+{
+    for (TSAttachmentPointer *attachmentPointer in self.supportedAttachmentPointers) {
+        [self retrieveAttachment:attachmentPointer message:message success:successHandler failure:failureHandler];
+    }
+    
+    for (TSAttachmentPointer *attachmentPointer in self.unsupportedAttachmentIds) {
+        [self retrieveAttachment:attachmentPointer message:message success:successHandler failure:failureHandler];
+    }
+}
+
+@end
+
 NS_ASSUME_NONNULL_END
