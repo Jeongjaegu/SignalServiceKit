@@ -23,6 +23,7 @@ extern NSString *const kAttachmentDownloadAttachmentIDKey;
 
 @property (nullable, nonatomic, readonly) NSArray<NSString *> *attachmentIds;
 @property (nonatomic, readonly) NSArray<NSString *> *supportedAttachmentIds;
+@property (nonatomic, readonly) NSArray<NSString *> *unsupportedAttachmentIds;
 @property (nonatomic, readonly) BOOL hasSupportedAttachments;
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -42,6 +43,14 @@ extern NSString *const kAttachmentDownloadAttachmentIDKey;
 - (void)fetchAttachmentsForMessage:(nullable TSMessage *)message
                            success:(void (^)(TSAttachmentStream *attachmentStream))successHandler
                            failure:(void (^)(NSError *error))failureHandler;
+@end
+
+@interface OWSAttachmentsProcessor (SupportedAttachment)
+
+- (void)fetchAllAttachmentsForMessage:(nullable TSMessage *)message
+                              success:(void (^)(TSAttachmentStream *attachmentStream))successHandler
+                              failure:(void (^)(NSError *error))failureHandler;
+
 @end
 
 NS_ASSUME_NONNULL_END

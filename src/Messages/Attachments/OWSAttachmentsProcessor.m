@@ -32,6 +32,7 @@ static const CGFloat kAttachmentDownloadProgressTheta = 0.001f;
 
 @property (nonatomic, readonly) TSNetworkManager *networkManager;
 @property (nonatomic, readonly) NSArray<TSAttachmentPointer *> *supportedAttachmentPointers;
+@property (nonatomic, readonly) NSArray<TSAttachmentPointer *> *unsupportedAttachmentPointers;
 
 @end
 
@@ -69,34 +70,40 @@ static const CGFloat kAttachmentDownloadProgressTheta = 0.001f;
     NSMutableArray<NSString *> *attachmentIds = [NSMutableArray new];
     NSMutableArray<TSAttachmentPointer *> *supportedAttachmentPointers = [NSMutableArray new];
     NSMutableArray<NSString *> *supportedAttachmentIds = [NSMutableArray new];
-
+    NSMutableArray<TSAttachmentPointer *> *unsupportedAttachmentPointers = [NSMutableArray new];
+    NSMutableArray<NSString *> *unsupportedAttachmentIds = [NSMutableArray new];
+    
     for (OWSSignalServiceProtosAttachmentPointer *attachmentProto in attachmentProtos) {
-
-        OWSAssert(attachmentProto.id != 0);
-        OWSAssert(attachmentProto.key != nil);
-        OWSAssert(attachmentProto.contentType != nil);
-
-        // digest will be empty for old clients.
-        NSData *digest = attachmentProto.hasDigest ? attachmentProto.digest : nil;
-
         TSAttachmentPointer *pointer = [[TSAttachmentPointer alloc] initWithServerId:attachmentProto.id
                                                                                  key:attachmentProto.key
-                                                                              digest:digest
                                                                          contentType:attachmentProto.contentType
-                                                                               relay:relay
-                                                                            filename:attachmentProto.fileName];
-
+                                                                               relay:relay];
+        
         [attachmentIds addObject:pointer.uniqueId];
 
         [pointer save];
-        [supportedAttachmentPointers addObject:pointer];
-        [supportedAttachmentIds addObject:pointer.uniqueId];
+        
+        if ([MIMETypeUtil isSupportedMIMEType:pointer.contentType]) {
+            [supportedAttachmentPointers addObject:pointer];
+            [supportedAttachmentIds addObject:pointer.uniqueId];
+        } else {
+            [unsupportedAttachmentPointers addObject:pointer];
+            [unsupportedAttachmentIds addObject:pointer.uniqueId];
+            
+            DDLogError(@"%@ Received unsupported attachment of type: %@", self.tag, pointer.contentType);
+            TSInfoMessage *infoMessage = [[TSInfoMessage alloc] initWithTimestamp:timestamp
+                                                                         inThread:thread
+                                                                      messageType:TSInfoMessageTypeUnsupportedMessage];
+            [infoMessage save];
+        }
     }
 
     _attachmentIds = [attachmentIds copy];
     _supportedAttachmentPointers = [supportedAttachmentPointers copy];
     _supportedAttachmentIds = [supportedAttachmentIds copy];
-
+    _unsupportedAttachmentPointers = [unsupportedAttachmentPointers copy];
+    _unsupportedAttachmentIds = [unsupportedAttachmentIds copy];
+    
     return self;
 }
 
