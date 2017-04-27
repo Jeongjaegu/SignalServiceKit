@@ -25,8 +25,8 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         __block BOOL isPresent;
         [self.newDatabaseConnection readWithBlock:^(YapDatabaseReadTransaction *_Nonnull transaction) {
-            isPresent = [[transaction objectForKey:TSStorageRegisteredNumberKey
-                                      inCollection:TSStorageUserAccountCollection] boolValue];
+            isPresent = [transaction objectForKey:TSStorageRegisteredNumberKey
+                                     inCollection:TSStorageUserAccountCollection] != nil;
         }];
 
         if (isPresent == runIfPresent) {
@@ -67,10 +67,10 @@
     YapDatabaseConnection *dbConn = [[self sharedManager] dbConnection];
 
     [dbConn readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-      [transaction setObject:authToken forKey:TSStorageServerAuthToken inCollection:TSStorageUserAccountCollection];
-      [transaction setObject:signalingKey
-                      forKey:TSStorageServerSignalingKey
-                inCollection:TSStorageUserAccountCollection];
+        [transaction setObject:authToken forKey:TSStorageServerAuthToken inCollection:TSStorageUserAccountCollection];
+        [transaction setObject:signalingKey
+                        forKey:TSStorageServerSignalingKey
+                  inCollection:TSStorageUserAccountCollection];
 
     }];
 }

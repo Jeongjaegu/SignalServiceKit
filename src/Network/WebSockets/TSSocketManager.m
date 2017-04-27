@@ -275,6 +275,8 @@ NSString *const SocketConnectingNotification = @"SocketConnectingNotification";
             [self resetSocket];
             
             // Create a new web socket.
+            // Create a new web socket.
+            NSString *textSecureWebSocketAPI = [NSString stringWithFormat:@"%@/v1/websocket/", [OWSSignalService baseURL]];
             NSString *webSocketConnect = [textSecureWebSocketAPI stringByAppendingString:[self webSocketAuthenticationString]];
             NSURL *webSocketConnectURL   = [NSURL URLWithString:webSocketConnect];
             NSMutableURLRequest *request = [[NSMutableURLRequest alloc] initWithURL:webSocketConnectURL];

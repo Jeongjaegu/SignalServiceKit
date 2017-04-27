@@ -12,6 +12,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL isCensored;
 @property (nonatomic, readonly) AFHTTPSessionManager *HTTPSessionManager;
 
++ (void)setBaseURL:(NSString *)baseURL;
+
++ (NSString *)baseURL;
+
 @end
 
 NS_ASSUME_NONNULL_END

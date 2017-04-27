@@ -58,6 +58,14 @@
     return [TSThread fetchObjectWithUniqueID:self.uniqueThreadId];
 }
 
++ (MTLPropertyStorage)storageBehaviorForPropertyWithKey:(NSString *)propertyKey {
+    if ([propertyKey isEqualToString:@"message"]) {
+        return MTLPropertyStorageNone;
+    }
+
+    return [super storageBehaviorForPropertyWithKey:propertyKey];
+}
+
 - (void)touchThreadWithTransaction:(YapDatabaseReadWriteTransaction *)transaction
 {
     TSThread *thread = [TSThread fetchObjectWithUniqueID:self.uniqueThreadId transaction:transaction];
