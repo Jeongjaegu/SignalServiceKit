@@ -4,6 +4,8 @@
 
 #import "TSYapDatabaseObject.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @class TSThread;
 
 @interface TSInteraction : TSYapDatabaseObject
@@ -14,7 +16,6 @@
 @property (nonatomic, readonly) TSThread *thread;
 @property (nonatomic, readonly) uint64_t timestamp;
 
-- (NSDate *)date;
 - (NSString *)description;
 
 /**
@@ -31,6 +32,18 @@
 + (instancetype)interactionForTimestamp:(uint64_t)timestamp
                         withTransaction:(YapDatabaseReadWriteTransaction *)transaction;
 
-- (nullable NSDate *)receiptDateForSorting;
+- (NSDate *)dateForSorting;
+- (uint64_t)timestampForSorting;
+- (NSComparisonResult)compareForSorting:(TSInteraction *)other;
+
+// "Dynamic" interactions are not messages or static events (like
+// info messages, error messages, etc.).  They are interactions
+// created, updated and deleted by the views.
+//
+// These include block offers, "add to contact" offers,
+// unseen message indicators, etc.
+- (BOOL)isDynamicInteraction;
 
 @end
+
+NS_ASSUME_NONNULL_END

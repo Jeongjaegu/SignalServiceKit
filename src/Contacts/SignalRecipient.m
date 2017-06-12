@@ -3,8 +3,8 @@
 //
 
 #import "SignalRecipient.h"
+#import "OWSIdentityManager.h"
 #import "TSStorageHeaders.h"
-#import "TSStorageManager+IdentityKeyStore.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -81,6 +81,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)supportsWebRTC
 {
     return YES;
+}
+
+- (NSString *)recipientId
+{
+    return self.uniqueId;
+}
+
+- (NSComparisonResult)compare:(SignalRecipient *)other
+{
+    return [self.recipientId compare:other.recipientId];
 }
 
 @end

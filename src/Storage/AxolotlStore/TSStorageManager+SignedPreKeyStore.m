@@ -2,7 +2,7 @@
 //  Copyright (c) 2017 Open Whisper Systems. All rights reserved.
 //
 
-#import "TSStorageManager+IdentityKeyStore.h"
+#import "OWSIdentityManager.h"
 #import "TSStorageManager+PreKeyStore.h"
 #import "TSStorageManager+SignedPreKeyStore.h"
 #import "TSStorageManager+keyFromIntLong.h"
@@ -26,10 +26,11 @@ NSString *const TSStorageManagerKeyPrekeyCurrentSignedPrekeyId = @"currentSigned
 
     // Signed prekey ids must be > 0.
     int preKeyId = 1 + arc4random_uniform(INT32_MAX - 1);
+    ECKeyPair *_Nullable identityKeyPair = [[OWSIdentityManager sharedManager] identityKeyPair];
     return [[SignedPreKeyRecord alloc]
          initWithId:preKeyId
             keyPair:keyPair
-          signature:[Ed25519 sign:keyPair.publicKey.prependKeyType withKeyPair:[self identityKeyPair]]
+          signature:[Ed25519 sign:keyPair.publicKey.prependKeyType withKeyPair:identityKeyPair]
         generatedAt:[NSDate date]];
 }
 
@@ -135,6 +136,53 @@ NSString *const TSStorageManagerKeyPrekeyCurrentSignedPrekeyId = @"currentSigned
 {
     [TSStorageManager.sharedManager removeObjectForKey:TSStorageManagerKeyFirstPrekeyUpdateFailureDate
                                           inCollection:TSStorageManagerSignedPreKeyMetadataCollection];
+}
+
+#pragma mark - Debugging
+
+- (void)logSignedPreKeyReport
+{
+    NSString *tag = @"[TSStorageManager (SignedPreKeyStore)]";
+
+    NSNumber *currentId = [self currentSignedPrekeyId];
+    NSDate *firstPrekeyUpdateFailureDate = [self firstPrekeyUpdateFailureDate];
+    NSUInteger prekeyUpdateFailureCount = [self prekeyUpdateFailureCount];
+
+    [self.dbConnection readWithBlock:^(YapDatabaseReadTransaction *_Nonnull transaction) {
+        __block int i = 0;
+
+        DDLogInfo(@"%@ SignedPreKeys Report:", tag);
+        DDLogInfo(@"%@   currentId: %@", tag, currentId);
+        DDLogInfo(@"%@   firstPrekeyUpdateFailureDate: %@", tag, firstPrekeyUpdateFailureDate);
+        DDLogInfo(@"%@   prekeyUpdateFailureCount: %lu", tag, (unsigned long)prekeyUpdateFailureCount);
+
+        NSUInteger count = [transaction numberOfKeysInCollection:TSStorageManagerSignedPreKeyStoreCollection];
+        DDLogInfo(@"%@   All Keys (count: %lu):", tag, (unsigned long)count);
+
+        [transaction
+            enumerateKeysAndObjectsInCollection:TSStorageManagerSignedPreKeyStoreCollection
+                                     usingBlock:^(
+                                         NSString *_Nonnull key, id _Nonnull signedPreKeyObject, BOOL *_Nonnull stop) {
+                                         i++;
+                                         if (![signedPreKeyObject isKindOfClass:[SignedPreKeyRecord class]]) {
+                                             DDLogError(@"%@ Was expecting SignedPreKeyRecord, but found: %@",
+                                                 tag,
+                                                 signedPreKeyObject);
+                                             OWSAssert(NO);
+                                             return;
+                                         }
+                                         SignedPreKeyRecord *signedPreKeyRecord
+                                             = (SignedPreKeyRecord *)signedPreKeyObject;
+                                         DDLogInfo(@"%@     #%d <SignedPreKeyRecord: id: %d, generatedAt: %@, "
+                                                   @"wasAcceptedByService:%@, signature: %@",
+                                             tag,
+                                             i,
+                                             signedPreKeyRecord.Id,
+                                             signedPreKeyRecord.generatedAt,
+                                             (signedPreKeyRecord.wasAcceptedByService ? @"YES" : @"NO"),
+                                             signedPreKeyRecord.signature);
+                                     }];
+    }];
 }
 
 @end

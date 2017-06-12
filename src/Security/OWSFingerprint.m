@@ -1,5 +1,6 @@
-//  Created by Michael Kirk on 9/14/16.
-//  Copyright © 2016 Open Whisper Systems. All rights reserved.
+//
+//  Copyright (c) 2017 Open Whisper Systems. All rights reserved.
+//
 
 #import "OWSFingerprint.h"
 #import "NSData+Base64.h"
@@ -34,8 +35,8 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
                          theirName:(NSString *)theirName
                     hashIterations:(uint32_t)hashIterations
 {
-    NSParameterAssert(theirIdentityKeyWithoutKeyType.length == 32);
-    NSParameterAssert(myIdentityKeyWithoutKeyType.length == 32);
+    OWSAssert(theirIdentityKeyWithoutKeyType.length == 32);
+    OWSAssert(myIdentityKeyWithoutKeyType.length == 32);
 
     self = [super init];
     if (!self) {
@@ -97,7 +98,7 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
             return NO;
         } else {
             // Sync log in case we bail.
-            NSLog(@"%@ parsing QRCode data failed with error: %@", self.tag, exception);
+            DDLogError(@"%@ parsing QRCode data failed with error: %@", self.tag, exception);
             @throw exception;
         }
     }
@@ -195,7 +196,7 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
  *
  * This method is intended to be somewhat expensive to produce in order to be brute force adverse.
  *
- * @param stableId
+ * @param stableIdData
  *      Immutable global identifier e.g. Signal Identifier, an e164 formatted phone number encoded as UTF-8 data
  * @param publicKey
  *      The current public key for <stableId>
@@ -204,8 +205,8 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
  */
 - (NSData *)dataForStableId:(NSData *)stableIdData publicKey:(NSData *)publicKey
 {
-    NSParameterAssert(stableIdData);
-    NSParameterAssert(publicKey);
+    OWSAssert(stableIdData);
+    OWSAssert(publicKey);
 
     NSData *versionData = [self dataFromShort:OWSFingerprintHashingVersion];
     NSMutableData *hash = [NSMutableData dataWithData:versionData];
@@ -226,7 +227,7 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
 
 - (NSString *)stringForFingerprintData:(NSData *)data
 {
-    NSParameterAssert(data);
+    OWSAssert(data);
 
     return [NSString stringWithFormat:@"%@%@%@%@%@%@",
                      [self encodedChunkFromData:data offset:0],
@@ -239,7 +240,7 @@ static uint32_t const OWSFingerprintDefaultHashIterations = 5200;
 
 - (NSString *)encodedChunkFromData:(NSData *)data offset:(uint)offset
 {
-    NSParameterAssert(data);
+    OWSAssert(data);
 
     uint8_t fiveBytes[5];
     [data getBytes:fiveBytes range:NSMakeRange(offset, 5)];

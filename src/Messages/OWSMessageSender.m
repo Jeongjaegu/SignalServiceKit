@@ -4,11 +4,13 @@
 
 #import "OWSMessageSender.h"
 #import "ContactsUpdater.h"
+#import "NSData+keyVersionByte.h"
 #import "NSData+messagePadding.h"
 #import "OWSBlockingManager.h"
 #import "OWSDevice.h"
 #import "OWSDisappearingMessagesJob.h"
 #import "OWSError.h"
+#import "OWSIdentityManager.h"
 #import "OWSLegacyMessageServiceParams.h"
 #import "OWSMessageServiceParams.h"
 #import "OWSOutgoingSentMessageTranscript.h"
@@ -26,7 +28,6 @@
 #import "TSNetworkManager.h"
 #import "TSOutgoingMessage.h"
 #import "TSPreKeyManager.h"
-#import "TSStorageManager+IdentityKeyStore.h"
 #import "TSStorageManager+PreKeyStore.h"
 #import "TSStorageManager+SignedPreKeyStore.h"
 #import "TSStorageManager+keyingMaterial.h"
@@ -341,7 +342,6 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 @property (nonatomic, readonly) YapDatabaseConnection *dbConnection;
 @property (nonatomic, readonly) id<ContactsManagerProtocol> contactsManager;
 @property (nonatomic, readonly) ContactsUpdater *contactsUpdater;
-@property (nonatomic, readonly) OWSDisappearingMessagesJob *disappearingMessagesJob;
 @property (atomic, readonly) NSMutableDictionary<NSString *, NSOperationQueue *> *sendingQueueMap;
 
 @end
@@ -366,7 +366,6 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
     _uploadingService = [[OWSUploadingService alloc] initWithNetworkManager:networkManager];
     _dbConnection = storageManager.newDatabaseConnection;
-    _disappearingMessagesJob = [[OWSDisappearingMessagesJob alloc] initWithStorageManager:storageManager];
 
     OWSSingletonAssert();
 
@@ -495,7 +494,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
     [self sendAttachmentData:attachmentData
                  contentType:contentType
-                    filename:nil
+              sourceFilename:nil
                    inMessage:message
                      success:successWithDeleteHandler
                      failure:failureWithDeleteHandler];
@@ -503,7 +502,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
 - (void)sendAttachmentData:(NSData *)data
                contentType:(NSString *)contentType
-                  filename:(nullable NSString *)filename
+            sourceFilename:(nullable NSString *)sourceFilename
                  inMessage:(TSOutgoingMessage *)message
                    success:(void (^)())successHandler
                    failure:(void (^)(NSError *error))failureHandler
@@ -517,7 +516,10 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
     dispatch_async([OWSDispatch attachmentsQueue], ^{
         TSAttachmentStream *attachmentStream =
-            [[TSAttachmentStream alloc] initWithContentType:contentType filename:filename];
+            [[TSAttachmentStream alloc] initWithContentType:contentType sourceFilename:sourceFilename];
+        if (message.isVoiceMessage) {
+            attachmentStream.attachmentType = TSAttachmentTypeVoiceMessage;
+        }
 
         NSError *error;
         [attachmentStream writeData:dataCopy error:&error];
@@ -528,8 +530,8 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
 
         [attachmentStream save];
         [message.attachmentIds addObject:attachmentStream.uniqueId];
-        if (filename) {
-            message.attachmentFilenameMap[attachmentStream.uniqueId] = filename;
+        if (sourceFilename) {
+            message.attachmentFilenameMap[attachmentStream.uniqueId] = sourceFilename;
         }
         [message save];
 
@@ -537,34 +539,6 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
             [self sendMessage:message success:successHandler failure:failureHandler];
         });
     });
-}
-
-- (void)resendMessageFromKeyError:(TSInvalidIdentityKeySendingErrorMessage *)errorMessage
-                          success:(void (^)())successHandler
-                          failure:(void (^)(NSError *error))failureHandler
-{
-    AssertIsOnMainThread();
-    OWSAssert(errorMessage);
-
-    NSString *failedMessageId = errorMessage.messageId;
-
-    // Here we remove the existing error message because sending a new message will either
-    //  1.) succeed and create a new successful message in the thread or...
-    //  2.) fail and create a new identical error message in the thread.
-    [errorMessage remove];
-
-    // The failedMessageId might be nil for transient, unsaved outgoing messages.
-    // See [TSOutgoingMessage saveWithTransaction:] for details of which messages
-    // we do not save.
-
-    if (!failedMessageId) {
-        return;
-    }
-
-    TSOutgoingMessage *message = [TSOutgoingMessage fetchObjectWithUniqueID:failedMessageId];
-    OWSAssert(message);
-
-    return [self sendMessage:message success:successHandler failure:failureHandler];
 }
 
 - (NSArray<SignalRecipient *> *)getRecipients:(NSArray<NSString *> *)identifiers error:(NSError **)error
@@ -713,7 +687,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         thread:thread
         attempts:OWSMessageSenderRetryAttempts
         success:^{
-            DDLogInfo(@"Marking group message as sent to recipient: %@", recipient.uniqueId);
+            DDLogInfo(@"%@ Marking group message as sent to recipient: %@", self.tag, recipient.uniqueId);
             [message updateWithSentRecipient:recipient.uniqueId];
             [futureSource trySetResult:@1];
         }
@@ -734,14 +708,21 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     NSMutableArray<TOCFuture *> *futures = [NSMutableArray array];
 
     for (SignalRecipient *recipient in recipients) {
+        NSString *recipientId = recipient.recipientId;
+
         // We don't need to send the message to ourselves...
-        if ([recipient.uniqueId isEqualToString:[TSStorageManager localNumber]]) {
+        if ([recipientId isEqualToString:[TSStorageManager localNumber]]) {
             continue;
         }
-        if ([message wasSentToRecipient:recipient.uniqueId]) {
+        // We don't need to sent the message to all group members if
+        // it has a "single group recipient".
+        if (message.singleGroupRecipient && ![message.singleGroupRecipient isEqualToString:recipientId]) {
+            continue;
+        }
+        if ([message wasSentToRecipient:recipientId]) {
             // Skip recipients we have already sent this message to (on an
             // earlier retry, perhaps).
-            DDLogInfo(@"Skipping group message recipient; already sent: %@", recipient.uniqueId);
+            DDLogInfo(@"%@ Skipping group message recipient; already sent: %@", self.tag, recipient.uniqueId);
             continue;
         }
 
@@ -877,20 +858,52 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     } @catch (NSException *exception) {
         deviceMessages = @[];
         if ([exception.name isEqualToString:UntrustedIdentityKeyException]) {
-            [[TSInvalidIdentityKeySendingErrorMessage
-                untrustedKeyWithOutgoingMessage:message
-                                       inThread:thread
-                                   forRecipient:exception.userInfo[TSInvalidRecipientKey]
-                                   preKeyBundle:exception.userInfo[TSInvalidPreKeyBundleKey]] save];
-            NSError *error = OWSErrorWithCodeDescription(OWSErrorCodeUntrustedIdentityKey,
-                NSLocalizedString(@"FAILED_SENDING_BECAUSE_UNTRUSTED_IDENTITY_KEY",
-                    @"action sheet header when re-sending message which failed because of untrusted identity keys"));
+            // This *can* happen under normal usage, but it should happen relatively rarely.
+            // We expect it to happen whenever Bob reinstalls, and Alice messages Bob before
+            // she can pull down his latest identity.
+            // If it's happening a lot, we should rethink our profile fetching strategy.
+            OWSAnalyticsInfo(@"Message send failed due to untrusted key.");
+
+            NSString *localizedErrorDescriptionFormat
+                = NSLocalizedString(@"FAILED_SENDING_BECAUSE_UNTRUSTED_IDENTITY_KEY",
+                    @"action sheet header when re-sending message which failed because of untrusted identity keys");
+
+            NSString *localizedErrorDescription =
+                [NSString stringWithFormat:localizedErrorDescriptionFormat,
+                          [self.contactsManager displayNameForPhoneIdentifier:recipient.recipientId]];
+            NSError *error = OWSErrorWithCodeDescription(OWSErrorCodeUntrustedIdentityKey, localizedErrorDescription);
+
             // Key will continue to be unaccepted, so no need to retry. It'll only cause us to hit the Pre-Key request
             // rate limit
             [error setIsRetryable:NO];
             // Avoid the "Too many failures with this contact" error rate limiting.
             [error setIsFatal:YES];
-            return failureHandler(error);
+
+            PreKeyBundle *newKeyBundle = exception.userInfo[TSInvalidPreKeyBundleKey];
+            if (![newKeyBundle isKindOfClass:[PreKeyBundle class]]) {
+                OWSFail(@"%@ unexpected TSInvalidPreKeyBundleKey: %@", self.tag, newKeyBundle);
+                failureHandler(error);
+                return;
+            }
+
+            NSData *newIdentityKeyWithVersion = newKeyBundle.identityKey;
+            if (![newIdentityKeyWithVersion isKindOfClass:[NSData class]]) {
+                OWSFail(@"%@ unexpected TSInvalidRecipientKey: %@", self.tag, newIdentityKeyWithVersion);
+                failureHandler(error);
+                return;
+            }
+
+            NSData *newIdentityKey = [newIdentityKeyWithVersion removeKeyType];
+            if (newIdentityKey.length != kIdentityKeyLength) {
+                OWSFail(@"%@ unexpected key length: %lu", self.tag, (unsigned long)newIdentityKey.length);
+                failureHandler(error);
+                return;
+            }
+
+            [[OWSIdentityManager sharedManager] saveRemoteIdentity:newIdentityKey recipientId:recipient.recipientId];
+
+            failureHandler(error);
+            return;
         }
 
         if ([exception.name isEqualToString:OWSMessageSenderRateLimitedException]) {
@@ -930,7 +943,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
             });
         }
         failure:^(NSURLSessionDataTask *task, NSError *error) {
-            DDLogDebug(@"%@ failure sending to service: %@", self.tag, message.debugDescription);
+            DDLogInfo(@"%@ sending to recipient: %@, failed with error: %@", self.tag, recipient.uniqueId, error);
             [DDLog flushLog];
 
             NSHTTPURLResponse *response = (NSHTTPURLResponse *)task.response;
@@ -965,6 +978,8 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
                     return failureHandler(error);
                 }
                 case 404: {
+                    DDLogWarn(@"%@ Unregistered recipient: %@", self.tag, recipient.uniqueId);
+
                     [self unregisteredRecipient:recipient message:message thread:thread];
                     NSError *error = OWSErrorMakeNoSuchSignalRecipientError();
                     // No need to retry if the recipient is not registered.
@@ -977,7 +992,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
                 }
                 case 409: {
                     // Mismatched devices
-                    DDLogWarn(@"%@ Mismatch Devices.", self.tag);
+                    DDLogWarn(@"%@ Mismatch Devices for recipient: %@", self.tag, recipient.uniqueId);
 
                     NSError *error;
                     NSDictionary *serializedResponse =
@@ -993,7 +1008,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
                 }
                 case 410: {
                     // Stale devices
-                    DDLogWarn(@"Stale devices");
+                    DDLogWarn(@"%@ Stale devices for recipient: %@", self.tag, recipient.uniqueId);
 
                     if (!responseData) {
                         DDLogWarn(@"Stale devices but server didn't specify devices in response.");
@@ -1022,7 +1037,13 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     NSArray *missingDevices = [dictionary objectForKey:@"missingDevices"];
 
     dispatch_async([OWSDispatch sessionStoreQueue], ^{
+        if (extraDevices.count < 1 && missingDevices.count < 1) {
+            DDLogError(@"%@ No missing or extra devices in %s", self.tag, __PRETTY_FUNCTION__);
+            OWSAssert(NO);
+        }
+
         if (extraDevices && extraDevices.count > 0) {
+            DDLogInfo(@"%@ removing extra devices: %@", self.tag, extraDevices);
             for (NSNumber *extraDeviceId in extraDevices) {
                 [self.storageManager deleteSessionForContact:recipient.uniqueId deviceId:extraDeviceId.intValue];
             }
@@ -1031,6 +1052,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         }
 
         if (missingDevices && missingDevices.count > 0) {
+            DDLogInfo(@"%@ Adding missing devices: %@", self.tag, missingDevices);
             [recipient addDevices:[NSSet setWithArray:missingDevices]];
         }
 
@@ -1048,20 +1070,20 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         [self sendSyncTranscriptForMessage:message];
     }
 
-    [self.disappearingMessagesJob setExpirationForMessage:message];
+    [OWSDisappearingMessagesJob setExpirationForMessage:message];
 }
 
 - (void)handleMessageSentRemotely:(TSOutgoingMessage *)message sentAt:(uint64_t)sentAt
 {
     [message updateWithWasSentAndDelivered];
     [self becomeConsistentWithDisappearingConfigurationForMessage:message];
-    [self.disappearingMessagesJob setExpirationForMessage:message expirationStartedAt:sentAt];
+    [OWSDisappearingMessagesJob setExpirationForMessage:message expirationStartedAt:sentAt];
 }
 
 - (void)becomeConsistentWithDisappearingConfigurationForMessage:(TSOutgoingMessage *)outgoingMessage
 {
-    [self.disappearingMessagesJob becomeConsistentWithConfigurationForMessage:outgoingMessage
-                                                              contactsManager:self.contactsManager];
+    [OWSDisappearingMessagesJob becomeConsistentWithConfigurationForMessage:outgoingMessage
+                                                            contactsManager:self.contactsManager];
 }
 
 - (void)handleSendToMyself:(TSOutgoingMessage *)outgoingMessage
@@ -1208,7 +1230,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
             SessionBuilder *builder = [[SessionBuilder alloc] initWithSessionStore:storage
                                                                        preKeyStore:storage
                                                                  signedPreKeyStore:storage
-                                                                  identityKeyStore:storage
+                                                                  identityKeyStore:[OWSIdentityManager sharedManager]
                                                                        recipientId:identifier
                                                                           deviceId:[deviceNumber intValue]];
             @try {
@@ -1231,7 +1253,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     SessionCipher *cipher = [[SessionCipher alloc] initWithSessionStore:storage
                                                             preKeyStore:storage
                                                       signedPreKeyStore:storage
-                                                       identityKeyStore:storage
+                                                       identityKeyStore:[OWSIdentityManager sharedManager]
                                                             recipientId:identifier
                                                                deviceId:[deviceNumber intValue]];
 
@@ -1296,6 +1318,7 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
     }
 }
 
+// Called when the server indicates that the devices no longer exist - e.g. when the remote recipient has reinstalled.
 - (void)handleStaleDevicesWithResponse:(NSData *)responseData
                            recipientId:(NSString *)identifier
                             completion:(void (^)())completionHandler

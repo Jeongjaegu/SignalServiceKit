@@ -15,13 +15,12 @@
 #import "TSDatabaseSecondaryIndexes.h"
 #import "TSDatabaseView.h"
 #import "TSInteraction.h"
-#import "TSPrivacyPreferences.h"
 #import "TSThread.h"
 #import <25519/Randomness.h>
 #import <SAMKeychain/SAMKeychain.h>
 #import <YapDatabase/YapDatabaseRelationship.h>
 
-NSString *const TSUIDatabaseConnectionDidUpdateNotification = @"TSUIDatabaseConnectionDidUpdateNotification";
+NS_ASSUME_NONNULL_BEGIN
 
 NSString *const TSStorageManagerExceptionNameDatabasePasswordInaccessible = @"TSStorageManagerExceptionNameDatabasePasswordInaccessible";
 NSString *const TSStorageManagerExceptionNameDatabasePasswordInaccessibleWhileBackgrounded =
@@ -35,7 +34,7 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
 
 @interface TSStorageManager ()
 
-@property YapDatabase *database;
+@property (nullable, atomic) YapDatabase *database;
 
 @end
 
@@ -62,7 +61,7 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
  */
 @implementation OWSUnknownObject
 
-- (instancetype)initWithCoder:(NSCoder *)aDecoder
+- (nullable instancetype)initWithCoder:(NSCoder *)aDecoder
 {
     return nil;
 }
@@ -196,8 +195,13 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
 {
     // Register extensions which are essential for rendering threads synchronously
     [TSDatabaseView registerThreadDatabaseView];
-    [TSDatabaseView registerBuddyConversationDatabaseView];
+    [TSDatabaseView registerThreadInteractionsDatabaseView];
+    [TSDatabaseView registerThreadIncomingMessagesDatabaseView];
+    [TSDatabaseView registerThreadOutgoingMessagesDatabaseView];
     [TSDatabaseView registerUnreadDatabaseView];
+    [TSDatabaseView registerUnseenDatabaseView];
+    [TSDatabaseView registerDynamicMessagesDatabaseView];
+    [TSDatabaseView registerSafetyNumberChangeDatabaseView];
     [self.database registerExtension:[TSDatabaseSecondaryIndexes registerTimeStampIndex] withName:@"idx"];
 
     // Register extensions which aren't essential for rendering threads async
@@ -240,13 +244,9 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
     }
 }
 
-- (YapDatabaseConnection *)newDatabaseConnection {
-    return self.database.newConnection;
-}
-
-- (TSPrivacyPreferences *)privacyPreferences
+- (nullable YapDatabaseConnection *)newDatabaseConnection
 {
-    return [TSPrivacyPreferences sharedInstance];
+    return self.database.newConnection;
 }
 
 - (BOOL)userSetPassword {
@@ -400,7 +400,8 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
     return object;
 }
 
-- (NSDictionary *)dictionaryForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable NSDictionary *)dictionaryForKey:(NSString *)key inCollection:(NSString *)collection
+{
     __block NSDictionary *object;
 
     [self.dbConnection readWithBlock:^(YapDatabaseReadTransaction *transaction) {
@@ -410,7 +411,8 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
     return object;
 }
 
-- (NSString *)stringForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable NSString *)stringForKey:(NSString *)key inCollection:(NSString *)collection
+{
     NSString *string = [self objectForKey:key inCollection:collection];
 
     return string;
@@ -422,24 +424,28 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
     return [boolNum boolValue];
 }
 
-- (NSData *)dataForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable NSData *)dataForKey:(NSString *)key inCollection:(NSString *)collection
+{
     NSData *data = [self objectForKey:key inCollection:collection];
     return data;
 }
 
-- (ECKeyPair *)keyPairForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable ECKeyPair *)keyPairForKey:(NSString *)key inCollection:(NSString *)collection
+{
     ECKeyPair *keyPair = [self objectForKey:key inCollection:collection];
 
     return keyPair;
 }
 
-- (PreKeyRecord *)preKeyRecordForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable PreKeyRecord *)preKeyRecordForKey:(NSString *)key inCollection:(NSString *)collection
+{
     PreKeyRecord *preKeyRecord = [self objectForKey:key inCollection:collection];
 
     return preKeyRecord;
 }
 
-- (SignedPreKeyRecord *)signedPreKeyRecordForKey:(NSString *)key inCollection:(NSString *)collection {
+- (nullable SignedPreKeyRecord *)signedPreKeyRecordForKey:(NSString *)key inCollection:(NSString *)collection
+{
     SignedPreKeyRecord *preKeyRecord = [self objectForKey:key inCollection:collection];
 
     return preKeyRecord;
@@ -476,7 +482,7 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
     }
 }
 
-- (void)setDate:(nonnull NSDate *)value forKey:(NSString *)key inCollection:(NSString *)collection
+- (void)setDate:(NSDate *)value forKey:(NSString *)key inCollection:(NSString *)collection
 {
     [self setObject:@(value.timeIntervalSince1970) forKey:key inCollection:collection];
 }
@@ -530,3 +536,5 @@ static NSString *keychainDBPassAccount    = @"TSDatabasePass";
 }
 
 @end
+
+NS_ASSUME_NONNULL_END
