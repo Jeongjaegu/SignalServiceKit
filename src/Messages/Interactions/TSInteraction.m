@@ -125,13 +125,13 @@ NS_ASSUME_NONNULL_BEGIN
 {
     switch (self.paymentState) {
         case TSPaymentStateFailed:
-            return NSLocalizedString(@"Failed", nil);
+            return NSLocalizedString(@"payment-state-failed", nil);
         case TSPaymentStatePendingConfirmation:
-            return NSLocalizedString(@"Requested", nil);
+            return NSLocalizedString(@"payment-state-requested", nil);
         case TSPaymentStateRejected:
-            return NSLocalizedString(@"Rejected", nil);
+            return NSLocalizedString(@"payment-state-rejected", nil);
         case TSPaymentStateApproved:
-            return NSLocalizedString(@"Approved", nil);
+            return NSLocalizedString(@"payment-state-approved", nil);
         default:
             return @"";
     }
