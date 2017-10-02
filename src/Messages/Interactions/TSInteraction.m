@@ -18,19 +18,19 @@ NS_ASSUME_NONNULL_BEGIN
     __block TSInteraction *interaction;
 
     [TSDatabaseSecondaryIndexes
-        enumerateMessagesWithTimestamp:timestamp
-                             withBlock:^(NSString *collection, NSString *key, BOOL *stop) {
+     enumerateMessagesWithTimestamp:timestamp
+     withBlock:^(NSString *collection, NSString *key, BOOL *stop) {
 
-                                 if (counter != 0) {
-                                     DDLogWarn(@"The database contains two colliding timestamps at: %lld.", timestamp);
-                                     return;
-                                 }
+         if (counter != 0) {
+             DDLogWarn(@"The database contains two colliding timestamps at: %lld.", timestamp);
+             return;
+         }
 
-                                 interaction = [TSInteraction fetchObjectWithUniqueID:key transaction:transaction];
+         interaction = [TSInteraction fetchObjectWithUniqueID:key transaction:transaction];
 
-                                 counter++;
-                             }
-                      usingTransaction:transaction];
+         counter++;
+     }
+     usingTransaction:transaction];
 
     return interaction;
 }
@@ -121,6 +121,22 @@ NS_ASSUME_NONNULL_BEGIN
     return @"Interaction description";
 }
 
+- (NSString *)paymentStateText
+{
+    switch (self.paymentState) {
+        case TSPaymentStateFailed:
+            return NSLocalizedString(@"Failed", nil);
+        case TSPaymentStatePendingConfirmation:
+            return NSLocalizedString(@"Requested", nil);
+        case TSPaymentStateRejected:
+            return NSLocalizedString(@"Rejected", nil);
+        case TSPaymentStateApproved:
+            return NSLocalizedString(@"Approved", nil);
+        default:
+            return @"";
+    }
+}
+
 - (void)saveWithTransaction:(YapDatabaseReadWriteTransaction *)transaction {
     if (!self.uniqueId) {
         self.uniqueId = [TSStorageManager getAndIncrementMessageIdWithTransaction:transaction];
@@ -141,3 +157,4 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+
