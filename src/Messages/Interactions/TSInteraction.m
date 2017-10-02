@@ -123,15 +123,21 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (NSString *)paymentStateText
 {
+    NSString *path = [[NSBundle bundleForClass:[TSInteraction class]] pathForResource:@"SignalServiceKit" ofType:@"bundle"];
+    NSBundle *bundle = [NSBundle bundleWithPath:path];
+    if (!bundle) {
+        bundle = [NSBundle mainBundle];
+    }
+
     switch (self.paymentState) {
         case TSPaymentStateFailed:
-            return NSLocalizedString(@"payment-state-failed", nil);
+            return [bundle localizedStringForKey:@"payment-state-failed" value:@"Failed" table:@"Localizable"];
         case TSPaymentStatePendingConfirmation:
-            return NSLocalizedString(@"payment-state-requested", nil);
+            return [bundle localizedStringForKey:@"payment-state-requested" value:@"Requested" table:@"Localizable"];
         case TSPaymentStateRejected:
-            return NSLocalizedString(@"payment-state-rejected", nil);
+            return [bundle localizedStringForKey:@"payment-state-rejected" value:@"Rejected" table:@"Localizable"];
         case TSPaymentStateApproved:
-            return NSLocalizedString(@"payment-state-approved", nil);
+            return [bundle localizedStringForKey:@"payment-state-approved" value:@"Approved" table:@"Localizable"];
         default:
             return @"";
     }
