@@ -25,7 +25,7 @@ An Objective-C library for communicating with the Signal messaging service.
   #s.ios.deployment_target = '8.0'
   #s.osx.deployment_target = '10.9'
   s.requires_arc = true
-  s.source_files = 'src/**/*.{h,m,mm}'
+  s.source_files = 'src/**/*.{h,m,mm,strings}’
 
   s.resources = ['src/Security/PinningCertificate/textsecure.cer',
                  'src/Security/PinningCertificate/GIAG2.crt']
