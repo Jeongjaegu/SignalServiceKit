@@ -27,10 +27,11 @@ NS_ASSUME_NONNULL_BEGIN
  */
 + (BOOL)isDatabasePasswordAccessible;
 
-- (void)setupForAccountName:(NSString *)accountName isFirstLaunch:(BOOL)isFirstLaunch;
+- (void)setupForAccountName:(NSString *)accountName isFirstLaunch:(BOOL)isFirstLaunch
+NS_SWIFT_NAME(setup(accountName:isFirstLaunch:));
 
 - (void)deleteThreadsAndMessages;
-- (void)resetSignalStorage;
+- (void)resetSignalStorageWithBackup:(BOOL)withBackup;
 
 - (nullable YapDatabase *)database;
 - (nullable YapDatabaseConnection *)newDatabaseConnection;
