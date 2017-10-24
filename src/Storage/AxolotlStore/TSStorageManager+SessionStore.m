@@ -92,6 +92,7 @@ void AssertIsOnSessionStoreQueue()
 
     [dictionary setObject:session forKey:@(deviceId)];
 
+    NSLog(@"\n\n Saving session records %@ \n\n.", dictionary);
     [self.sessionDBConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
         [transaction setObject:[dictionary copy]
                         forKey:contactIdentifier
@@ -165,6 +166,7 @@ void AssertIsOnSessionStoreQueue()
             [sessionRecord archiveCurrentState];
         }
 
+        NSLog(@" \n\n --- Saving session records for %@,  %@, \n\n.", contactIdentifier, sessionRecords);
         [transaction setObject:sessionRecords
                         forKey:contactIdentifier
                   inCollection:TSStorageManagerSessionStoreCollection];
