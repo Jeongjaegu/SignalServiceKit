@@ -1194,6 +1194,9 @@ NSString *const OWSMessageSenderRateLimitedException = @"RateLimitedException";
         __block dispatch_semaphore_t sema = dispatch_semaphore_create(0);
         __block PreKeyBundle *bundle;
         __block NSException *exception;
+
+        NSLog(@"\n\n ********************************* Identifier: %@ ********************************** \n\n.", identifier);
+
         [self.networkManager makeRequest:[[TSRecipientPrekeyRequest alloc] initWithRecipient:identifier
                                                                                     deviceId:[deviceNumber stringValue]]
                                  success:^(NSURLSessionDataTask *task, id responseObject) {
