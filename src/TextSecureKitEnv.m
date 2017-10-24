@@ -136,6 +136,8 @@ NS_ASSUME_NONNULL_BEGIN
 
         [self.storageManager setupDatabase];
 
+        [self setupForNewSession];
+
         NSLog(@"\n *** %@", self);
     }
 }
